@@ -1,7 +1,6 @@
 use macroquad::prelude::*;
-use scene::clear;
 
-const CELL_DIM : f32 = 10.0;
+const CELL_DIM : f32 = 75.0;
 const DEAD : u8 = 0;
 const P1 : u8 = 1;
 const P2 : u8 = 2;
@@ -111,6 +110,26 @@ impl Grid {
             }
         }
     }
+    pub fn check_winner(&self) -> u8 {
+        let mut p1_count = 0;
+        let mut p2_count = 0;
+        for i in 0..self.cells.len() {
+            for j in 0..self.cells[i].len() {
+                if self.cells[i][j].player == P1 {
+                    p1_count += 1;
+                } else if self.cells[i][j].player == P2 {
+                    p2_count += 1;
+                }
+            }
+        }
+        if p1_count == 0 {
+            P2
+        } else if p2_count == 0 {
+            P1
+        } else {
+            DEAD
+        }
+    }
 }
 
 pub fn grid_init() -> Grid {
@@ -134,6 +153,9 @@ async fn main() {
     let mut frame_count : i64 = 0;
     let mut grid_count : u16 = 0;
     let mut cur_game_state = GameState::StartScreen;
+    let mut count_selected_p1 = 0;
+    let mut count_selected_p2 = 0;
+    let mut winner : u8 = DEAD;
     loop {
         clear_background(WHITE);
         // Draw grid after 15 frames
@@ -142,7 +164,24 @@ async fn main() {
             grid_count += 1;
         } else {
             if cur_game_state == GameState::StartScreen {
-                draw_text("Press Enter to Start", screen_width() / 3.0, screen_height() / 2.0, 30.0, BLACK);
+                // add game customization options and a dialog box that displays rules
+                if is_key_down(KeyCode::R) {
+                    // Display rules dialog box
+                    draw_rectangle(screen_width() / 4.0, screen_height() / 4.0, screen_width() / 2.0, screen_height() / 2.0, WHITE);
+                    draw_text("Game Rules:", screen_width() / 3.5, screen_height() / 3.5, 20.0, BLACK);
+                    draw_text("- Each player can select up to 10 cells on the grid.", screen_width() / 4.0, screen_height() / 3.0, 15.0, BLACK);
+                    draw_text("- The game starts with the Start Screen.", screen_width() / 4.0, screen_height() / 2.8, 15.0, BLACK);
+                    draw_text("- Press Enter to move to the Select Screen for Player 1.", screen_width() / 4.0, screen_height() / 2.6, 15.0, BLACK);
+                    draw_text("- Left-click on cells to select or deselect them.", screen_width() / 4.0, screen_height() / 2.4, 15.0, BLACK);
+                    draw_text("- Press Enter to move to the Select Screen for Player 2.", screen_width() / 4.0, screen_height() / 2.2, 15.0, BLACK);
+                    draw_text("- The game progresses to the Play Screen.", screen_width() / 4.0, screen_height() / 2.0, 15.0, BLACK);
+                    draw_text("- The grid is updated every 60 frames.", screen_width() / 4.0, screen_height() / 1.8, 15.0, BLACK);
+                    draw_text("- Press Enter to move to the Game Over Screen.", screen_width() / 4.0, screen_height() / 1.6, 15.0, BLACK);
+                    draw_text("- The Game Over Screen displays 'Game Over!'.", screen_width() / 4.0, screen_height() / 1.5, 15.0, BLACK);
+                } else {
+                    draw_text("Press Enter to Start", screen_width() / 3.0, screen_height() / 2.0, 30.0, BLACK);
+                    draw_text("Press R to view rules", screen_width() / 3.0, screen_height() / 1.8, 20.0, BLACK);
+                }
                 if is_key_pressed(KeyCode::Enter) {
                     cur_game_state = GameState::SelectScreenP1;
                 }
@@ -153,7 +192,14 @@ async fn main() {
                     let y = mouse_position().1;
                     let x_index = (x / CELL_DIM) as i32;
                     let y_index = (y / CELL_DIM) as i32;
-                    grid.cells[x_index as usize][y_index as usize].player = P1;
+                    let player : u8 = grid.cells[x_index as usize][y_index as usize].player;
+                    if player == P1 {
+                        grid.cells[x_index as usize][y_index as usize].player = DEAD;
+                        count_selected_p1 -= 1;
+                    } else if count_selected_p1 < 10 {
+                        grid.cells[x_index as usize][y_index as usize].player = P1;
+                        count_selected_p1 += 1;
+                    }
                 }
                 if is_key_pressed(KeyCode::Enter) {
                     cur_game_state = GameState::SelectScreenP2;
@@ -165,21 +211,36 @@ async fn main() {
                     let y = mouse_position().1;
                     let x_index = (x / CELL_DIM) as i32;
                     let y_index = (y / CELL_DIM) as i32;
-                    grid.cells[x_index as usize][y_index as usize].player = P2;
+                    let player : u8 = grid.cells[x_index as usize][y_index as usize].player;
+                    if player == P2 {
+                        grid.cells[x_index as usize][y_index as usize].player = DEAD;
+                        count_selected_p2 -= 1;
+                    } else if player == DEAD && count_selected_p2 < 10 {
+                        grid.cells[x_index as usize][y_index as usize].player = P2;
+                        count_selected_p2 += 1;
+                    }
                 }
                 if is_key_pressed(KeyCode::Enter) {
                     cur_game_state = GameState::PlayScreen;
                 }
             } else if cur_game_state == GameState::PlayScreen {
                 grid.draw();
-                if frame_count % 60 == 0 {
+                if frame_count % 30 == 0 {
                     grid.sim();
                 }
-                if is_key_pressed(KeyCode::Enter) {
+                winner = grid.check_winner();
+                if winner != DEAD || frame_count > 10000 {
                     cur_game_state = GameState::GameOverScreen;
                 }
             } else if cur_game_state == GameState::GameOverScreen {
-                draw_text("Game Over!", screen_width() / 2.5, screen_height() / 2.0, 30.0, RED);
+                if winner == P1 {
+                    draw_text("Player 1 Wins!", screen_width() / 2.5, screen_height() / 2.5, 30.0, RED);
+                } else if winner == P2 {
+                    draw_text("Player 2 Wins!", screen_width() / 2.5, screen_height() / 2.5, 30.0, BLUE);
+                } else {
+                    draw_text("It's a Draw!", screen_width() / 2.5, screen_height() / 2.5, 30.0, BLACK);
+                }
+                draw_text("Game Over!", screen_width() / 2.5, screen_height() / 2.0, 30.0, GREEN);
             }
         }
         frame_count += 1;
