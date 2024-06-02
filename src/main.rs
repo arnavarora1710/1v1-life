@@ -37,6 +37,7 @@ impl Cell {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct Grid {
     cells : Vec<Vec<Cell>>
 }
@@ -156,6 +157,7 @@ async fn main() {
     let mut count_selected_p1 = 0;
     let mut count_selected_p2 = 0;
     let mut winner : u8 = DEAD;
+    let mut last_few_frames = 0;
     loop {
         clear_background(WHITE);
         // Draw grid after 15 frames
@@ -225,11 +227,15 @@ async fn main() {
                 }
             } else if cur_game_state == GameState::PlayScreen {
                 grid.draw();
+                let old_grid = grid.clone();
                 if frame_count % 30 == 0 {
                     grid.sim();
                 }
                 winner = grid.check_winner();
-                if winner != DEAD || frame_count > 10000 {
+                if winner != DEAD || old_grid.cells == grid.cells {
+                    last_few_frames += 1;
+                }
+                if last_few_frames == 120 {
                     cur_game_state = GameState::GameOverScreen;
                 }
             } else if cur_game_state == GameState::GameOverScreen {
