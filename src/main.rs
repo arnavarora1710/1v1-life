@@ -1,4 +1,5 @@
 use macroquad::prelude::*;
+use scene::clear;
 
 const CELL_DIM : f32 = 10.0;
 const DEAD : u8 = 0;
@@ -14,6 +15,7 @@ pub enum GameState {
     GameOverScreen
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Cell {
     x: f32,
     y: f32,
@@ -52,6 +54,63 @@ impl Grid {
             }
         }
     }
+
+    pub fn sim (&mut self) {
+        for i in 0..self.cells.len() {
+            for j in 0..self.cells[i].len() {
+                let mut p1_count = 0;
+                let mut p2_count = 0;
+                for x in -1..=1 {
+                    for y in -1..=1 {
+                        if x == 0 && y == 0 {
+                            continue;
+                        }
+                        let new_x = i as i32 + x;
+                        let new_y = j as i32 + y;
+                        if new_x < 0 || new_x >= self.cells.len() as i32 || new_y < 0 || new_y >= self.cells[i].len() as i32 {
+                            continue;
+                        }
+                        if self.cells[new_x as usize][new_y as usize].player == P1 {
+                            p1_count += 1;
+                        } else if self.cells[new_x as usize][new_y as usize].player == P2 {
+                            p2_count += 1;
+                        }
+                    }
+                }
+                // p2life rules
+                // https://www.dcs.bbk.ac.uk/~gr/pdf/p2life.pdf
+                if self.cells[i][j].player == P1 {
+                    let diff : i32 = p1_count as i32 - p2_count as i32;
+                    if diff == 2 || diff == 3 || (diff == 1 && p1_count >= 2) {
+                        self.cells[i][j].player = P1;
+                    } else {
+                        self.cells[i][j].player = DEAD;
+                    }
+                } else if self.cells[i][j].player == P2 {
+                    let diff : i32 = p2_count as i32 - p1_count as i32;
+                    if diff == 2 || diff == 3 || (diff == 1 && p2_count >= 2) {
+                        self.cells[i][j].player = P2;
+                    } else {
+                        self.cells[i][j].player = DEAD;
+                    }
+                } else {
+                    if p1_count == 3 && p2_count != 3 {
+                        self.cells[i][j].player = P1;
+                    } else if p2_count == 3 && p1_count != 3 {
+                        self.cells[i][j].player = P2;
+                    } else if p1_count == 3 && p2_count == 3 {
+                        // flip a coin to decide if P1 or P2
+                        let coin = rand::gen_range(0, 2);
+                        if coin == 0 {
+                            self.cells[i][j].player = P1;
+                        } else {
+                            self.cells[i][j].player = P2;
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 pub fn grid_init() -> Grid {
@@ -72,21 +131,22 @@ pub fn grid_init() -> Grid {
 #[macroquad::main("breakout")]
 async fn main() {
     let mut grid : Grid = grid_init();
-    let mut count : u16 = 0;
-    let mut curGameState = GameState::StartScreen;
+    let mut frame_count : i64 = 0;
+    let mut grid_count : u16 = 0;
+    let mut cur_game_state = GameState::StartScreen;
     loop {
         clear_background(WHITE);
         // Draw grid after 15 frames
-        if count <= 15 {
+        if grid_count <= 15 {
             grid = grid_init();
-            count += 1;
+            grid_count += 1;
         } else {
-            if curGameState == GameState::StartScreen {
+            if cur_game_state == GameState::StartScreen {
                 draw_text("Press Enter to Start", screen_width() / 3.0, screen_height() / 2.0, 30.0, BLACK);
                 if is_key_pressed(KeyCode::Enter) {
-                    curGameState = GameState::SelectScreenP1;
+                    cur_game_state = GameState::SelectScreenP1;
                 }
-            } else if curGameState == GameState::SelectScreenP1 {
+            } else if cur_game_state == GameState::SelectScreenP1 {
                 grid.draw();
                 if is_mouse_button_pressed(MouseButton::Left) {
                     let x = mouse_position().0;
@@ -96,9 +156,9 @@ async fn main() {
                     grid.cells[x_index as usize][y_index as usize].player = P1;
                 }
                 if is_key_pressed(KeyCode::Enter) {
-                    curGameState = GameState::SelectScreenP2;
+                    cur_game_state = GameState::SelectScreenP2;
                 }
-            } else if curGameState == GameState::SelectScreenP2 {
+            } else if cur_game_state == GameState::SelectScreenP2 {
                 grid.draw();
                 if is_mouse_button_pressed(MouseButton::Left) {
                     let x = mouse_position().0;
@@ -108,14 +168,21 @@ async fn main() {
                     grid.cells[x_index as usize][y_index as usize].player = P2;
                 }
                 if is_key_pressed(KeyCode::Enter) {
-                    curGameState = GameState::PlayScreen;
+                    cur_game_state = GameState::PlayScreen;
                 }
-            } else if curGameState == GameState::PlayScreen {
+            } else if cur_game_state == GameState::PlayScreen {
                 grid.draw();
-            } else if curGameState == GameState::GameOverScreen {
-                draw_text("Game Over", 100.0, 100.0, 30.0, RED);
+                if frame_count % 60 == 0 {
+                    grid.sim();
+                }
+                if is_key_pressed(KeyCode::Enter) {
+                    cur_game_state = GameState::GameOverScreen;
+                }
+            } else if cur_game_state == GameState::GameOverScreen {
+                draw_text("Game Over!", screen_width() / 2.5, screen_height() / 2.0, 30.0, RED);
             }
         }
+        frame_count += 1;
         next_frame().await
     }
 }
